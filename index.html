@@ -1,0 +1,439 @@
+<html>
+<head>
+	<style>
+
+		@font-face {
+			font-family: Retro;
+			src: url('retro.ttf');
+		}
+
+		body {
+			margin: 0;
+			padding: 0;
+		}
+	</style>
+</head>
+<body>
+	<canvas id="myCanvas">
+	<script src="Keyboard.js"></script>
+	<script src="howler.min.js"></script>
+	<script>
+
+		var playerKeys = [{
+			up: 38,
+			left: 37,
+			right: 39,
+			verbose: "Arrow Keys"
+		},
+		{
+			up: 87,
+			left: 65,
+			right: 68,
+			verbose: "WAD"
+		},
+		{
+			up: 72,
+			left: 66,
+			right: 78,
+			verbose: "HBN",
+		},
+		{
+			up: 73,
+			left: 74,
+			right: 76,
+			verbose: "IJL"
+		}, {
+			gamepad: true,
+			verbose: "Gamepad"
+		}];
+		
+		function BGMusic () {
+
+			var sound = new Howl({
+				//urls: ['bgmusic'+Math.floor(Math.random()*6)+'.mp3'], for random multiple bgmusic
+				urls: ['bgmusic0.mp3'],
+				autoplay: true,
+				volume: 0.75,
+				onend: function() {
+					BGMusic();
+				}
+			});
+
+		}
+
+		BGMusic();
+
+		var maxHeight = window.localStorage.getItem('maxHeight');
+		if (!maxHeight) maxHeight = 0;
+		var recordHolder = window.localStorage.getItem('recordHolder');
+
+		var keyboard = new KeyboardJS (true);
+		var canvas = document.getElementById('myCanvas');
+		var ctx = canvas.getContext('2d');
+
+		var gravity = 0.5;
+
+		window.onresize = function () {
+			canvas.width = window.innerWidth;
+			canvas.height = window.innerHeight;
+		}
+
+		function pointIsInsideRect (p, rect) {
+			return (rect.x <= p.x && p.x <= rect.x+rect.width && rect.y <= p.y && p.y <= rect.y+rect.height);
+		}
+
+		function saveRecord () {
+
+			window.localStorage.setItem('maxHeight', maxHeight);
+			window.localStorage.setItem('recordHolder', recordHolder);
+
+		}
+
+		function resetGame () {
+
+			var highestPlayer = getHighestPlayer();
+			var currentMaxHeight = Math.floor(-highestPlayer.y);
+			
+			if (!recordHolder) {
+				recordHolder = highestPlayer.username;
+				maxHeight = currentMaxHeight;
+				saveRecord();
+			} else {
+				if (maxHeight < currentMaxHeight) {
+					maxHeight = currentMaxHeight;
+					recordHolder = highestPlayer.username;
+					saveRecord();
+				}
+			}
+
+			nextPlayerID = 0;
+			camera = {y: canvas.height-50};
+			cameraSmoothY = camera.y;
+			creationLevel = 0;
+
+			autoForward = resetAutoForward;
+
+			gameObjectArray = [];
+
+			platforms = [];
+
+			for (var i = 0; i < players.length; ++i) players[i].resetPlayer();
+
+			new Platform ({x: -400, y:0, width:canvas.width+800, height:400});
+
+			resetAutoForward = 7*60;
+			autoForward = resetAutoForward;
+
+		}
+
+
+		function checkGameEnd() {
+			var alivePlayers = 0;
+			for (var i = 0; i < players.length; ++i) {
+				if (!players[i].dead) alivePlayers++;
+			}
+			if (alivePlayers == 0) {
+				setTimeout(resetGame, 2000);
+			}
+		}
+
+		function GameObject (properties) {
+			this.x = 0;
+			this.y = 0;
+			this.width = 50;
+			this.height = 50;
+			this.color = 'red';
+			for (var prop in properties) {
+				this[prop] = properties[prop];
+			}
+		}
+		GameObject.prototype.render = function (ctx) {
+			ctx.save();
+			ctx.fillStyle = this.color;
+			ctx.fillRect(this.x, this.y, this.width, this.height);
+			ctx.restore();
+		}
+		GameObject.prototype.logic = function () {
+
+		}
+		GameObject.prototype.hitTestGameObjectBottom = function (g) {
+			//if (pointIsInsideRect({x:this.x, y:this.y}, g)) return true;
+			//if (pointIsInsideRect({x:this.x+this.width, y:this.y}, g)) return true;
+			if (pointIsInsideRect({x:this.x, y:this.y+this.height}, g)) return true;
+			if (pointIsInsideRect({x:this.x+this.width, y:this.y+this.height}, g)) return true;
+			return false;
+		}
+		GameObject.prototype.hitTestGameObjectTop = function (g) {
+			if (pointIsInsideRect({x:this.x, y:this.y}, g)) return true;
+			if (pointIsInsideRect({x:this.x+this.width, y:this.y}, g)) return true;
+			return false;
+		}
+
+		function Platform (properties) {
+			this.height = 20;
+			this.width = 150 + Math.floor(Math.random()*200);
+			this.x = Math.floor(Math.random()*canvas.width) - this.width/2;
+			this.y = Math.floor(Math.random()*canvas.height);
+			this.color = '#FF7F00';
+			this.color = '#aaaaaa';
+			this.color = '#FFFFFF';
+			for (var prop in properties) this[prop] = properties[prop];
+			gameObjectArray.push(this);
+			platforms.push(this);
+			
+		}
+		Platform.prototype = new GameObject ();
+
+		var nextPlayerID = 0;
+
+		var playerColors = ["#33CC66", "#3366CC", "#CC0000", "#000000", "#66CCFF"];
+
+		function Player (properties) {
+			this.vy = 0;
+			for (var prop in properties) this[prop] = properties[prop];
+			this.id = nextPlayerID++;
+			this.keys = playerKeys[this.id];
+			this.y = -100;
+			this.x = Math.random()*(canvas.width-this.width);
+			this.color = playerColors[this.id];
+			this.dead = false;
+			this.username = prompt("Insert username for Player "+(this.id+1)+'. Keys: '+this.keys.verbose);
+			if (!this.username) return;
+			players.push(this);
+			platforms.push(this);
+			gameObjectArray.push(this);
+
+		}
+		Player.prototype = new GameObject ();
+		Player.prototype.resetPlayer = function () {
+			this.vy = 0;
+			this.y = -100;
+			this.x = Math.random()*(canvas.width-this.width);
+			this.dead = false;
+			platforms.push(this);
+			gameObjectArray.push(this);
+		}
+		var dieSound = new Howl({
+			urls: ['gameOver.wav'],
+			volume: 1
+		});
+		var jumpSound = new Howl({
+			urls: ['jump0.wav'],
+			volume: 1
+		});
+		Player.prototype.die = function () {
+			console.log('Player'+this.id+' died.');
+			this.dead = true;
+			dieSound.pos(0);
+			dieSound.play();
+			checkGameEnd();
+		}
+		Player.prototype.logic = function () {
+
+			if (this.dead) return;
+
+			if (this.y > -camera.y+canvas.height+200) {
+				this.die();
+				return;
+			}
+
+			var gamepad = navigator.webkitGetGamepads && navigator.webkitGetGamepads()[0];
+
+			var leftKey = keyboard.keysASCII[this.keys['left']];
+			if (this.keys.gamepad && gamepad) leftKey = gamepad.buttons[14];
+
+			if (leftKey) this.x -= 5;
+
+			var rightKey = keyboard.keysASCII[this.keys['right']];
+			if (this.keys.gamepad && gamepad) rightKey = gamepad.buttons[15];
+
+			if (rightKey) this.x += 5;
+			if (this.x < -this.width) this.x += canvas.width;
+			else if (this.x > canvas.width) this.x -= canvas.width;
+
+			var upKey = keyboard.keysASCII[this.keys['up']];
+			if (this.keys.gamepad && gamepad) upKey = gamepad.buttons[0];
+
+			if (upKey && !this.oldW) {
+				if (this.hitTestPlatformBottom()) {
+					jumpSound.pos(0);
+					jumpSound.play();
+					this.vy -= 15;
+				}
+			}
+			this.oldW = upKey;
+
+			var initialY = this.y;
+			this.vy += gravity;
+			this.y += this.vy;
+
+			var plat;
+
+			if (this.vy > 0) {
+				plat = this.hitTestPlatformBottom();
+				if (plat) {
+					this.vy = 0;
+					this.y = plat.y-this.height;
+				}
+			} else if (this.vy < 0) {
+				plat = this.hitTestPlatformTop();
+				if (plat) {
+					this.vy = 0;
+					this.y = plat.y+plat.height;
+				}
+			}
+			
+
+		}
+		Player.prototype.hitTestPlatformBottom = function () {
+			for (var i = 0; i < platforms.length; ++i) {
+				if (this != platforms[i] && this.hitTestGameObjectBottom(platforms[i])) return platforms[i];
+			}
+			return false;
+		}
+		Player.prototype.hitTestPlatformTop = function () {
+			for (var i = 0; i < platforms.length; ++i) {
+				if (this != platforms[i] && this.hitTestGameObjectTop(platforms[i])) return platforms[i];
+			}
+			return false;
+		}
+
+		window.onresize();
+
+		var camera = {y: canvas.height-50};
+		var cameraSmoothY = camera.y;
+		var creationLevel = 0;
+
+		var bgColors = ['#cccccc', '#9966FF', '#6699FF', '#FFCC33', '#99FFCC'];
+		var bgColorIndex = 0;
+
+		var resetAutoForward = 7*60;
+		var autoForward = resetAutoForward;
+
+		var theta = 0;
+
+		function render () {
+
+			//ctx.clearRect();
+			ctx.save();
+			ctx.fillStyle = bgColors[bgColorIndex];
+			ctx.globalAlpha = 0.15;
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			ctx.restore();
+
+			ctx.save();
+			ctx.translate(0, cameraSmoothY);
+
+			++theta;
+			ctx.translate(canvas.width/2, -canvas.height/2);
+			//ctx.rotate(Math.sin(theta/100)*Math.PI/15);
+			ctx.translate(-canvas.width/2, +canvas.height/2);
+			for (var i = 0; i < gameObjectArray.length; ++i) {
+				gameObjectArray[i].render(ctx);
+			}
+			ctx.restore();
+
+			var pY = 30;
+			var pX = 20;
+			for (var i = 0; i < players.length; ++i) {
+				var player = players[i];
+				if (!player.dead) {
+					ctx.fillStyle = player.color;
+					ctx.fillRect(pX, pY, 50, 50);
+				}
+				pX += 70;
+			}
+
+			ctx.save();
+			ctx.globalAlpha = 0.5;
+			ctx.fillStyle = 'black';
+			ctx.fillRect(0, 0, (autoForward/resetAutoForward)*canvas.width, 10);
+			ctx.restore();
+			ctx.font = '20px Retro';
+			//ctx.strokeText('hi', 100, 100);
+			var highestPlayer = getHighestPlayer();
+			ctx.fillStyle = highestPlayer.color;
+			ctx.fillText('Height: '+ Math.floor(-highestPlayer.y) + 'm', 20, 120);
+			ctx.fillStyle = 'black';
+			if (recordHolder) {
+				ctx.fillText('Max Height: ' + maxHeight+'m', 20, 160);
+				ctx.fillText('By '+recordHolder, 20, 180);
+			}
+
+		}
+
+		var gameObjectArray = [];
+
+		var platforms = [];
+
+		var players = [];
+
+		function SpawnPlayers () {
+			for (var i = 0; i < 5; ++i) new Player ();
+		}
+
+		new Platform ({x: -400, y:0, width:canvas.width+800, height:400});
+
+		var inc = 200;
+
+		function getHighestPlayer () {
+			var high = {y:0, username: 'Someone'};
+			for (var i = 0; i < players.length; ++i) {
+				if (players[i].y < high.y) high = players[i];
+			}
+			return high;
+		}
+
+		function changeBGColor () {
+			oldBgColorIndex = bgColorIndex;
+			while (oldBgColorIndex == bgColorIndex) bgColorIndex = Math.floor(Math.random()*bgColors.length);
+		}
+
+		function spawnPlatforms () {
+			while (creationLevel > -camera.y) {
+				creationLevel -= inc;
+				for (var i = 0; i < 4; ++i) {
+					new Platform ({x:Math.random()*canvas.width, y: creationLevel+Math.random()*inc});
+				}
+			}
+		}
+
+		SpawnPlayers();
+		camera.y = 3000;
+		cameraSmoothY = camera.y;
+		//spawnPlatforms();
+		camera.y = canvas.height-50;
+		
+
+		function mainLoop () {
+
+			requestAnimationFrame(mainLoop);
+
+			//PLATFORM CREATION
+			spawnPlatforms();
+		
+			//AUTOFORWARD
+			var highestPlayer = getHighestPlayer();
+			autoForward--;
+			if (highestPlayer.y < creationLevel+inc || autoForward == 0) {
+				changeBGColor();
+				resetAutoForward -= 30;
+				if (resetAutoForward < 200) resetAutoForward = 200;
+				autoForward = resetAutoForward;
+				camera.y += inc;
+			}
+
+			//GAME OBJECT LOGIC
+			for (var i = 0; i < gameObjectArray.length; ++i) {
+				gameObjectArray[i].logic();
+			}
+			cameraSmoothY += (camera.y-cameraSmoothY)/10;
+			render();
+
+		}
+
+		requestAnimationFrame(mainLoop);
+
+	</script>
+</body>
+</html>
